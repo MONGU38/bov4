@@ -732,7 +732,7 @@ localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
         // 서비스 워커 등록
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/bo57/sw.js')
+    navigator.serviceWorker.register('./sw.js')
       .then(function(registration) {
         console.log('Service Worker registered successfully:', registration.scope);
       })
