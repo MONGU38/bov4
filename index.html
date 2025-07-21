@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📦 보물창고</title>
+    <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f97316">
+<link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        // 아이콘 컴포넌트들
+        const Plus = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>+</span>;
+        const ChevronRight = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>▶</span>;
+        const ChevronDown = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>▼</span>;
+        const Folder = ({ size = 16, className = '' }) => <span style={{fontSize: size + 'px'}} className={className}>📁</span>;
+        const Edit2 = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>✏️</span>;
+        const Trash2 = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>🗑️</span>;
+        const Save = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>💾</span>;
+        const X = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>❌</span>;
+        const FileText = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>📄</span>;
+        const ExternalLink = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>🔗</span>;
+        const Search = ({ size = 16 }) => <span style={{fontSize: size + 'px'}}>🔍</span>;
+
+        const TreasureBoxApp = () => {
+          // localStorage에서 데이터 불러오기
+const loadData = () => {
+  try {
+    const saved = localStorage.getItem('treasureBoxData');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('데이터 불러오기 실패:', error);
+    return [];
+  }
+};
+
+const [categories, setCategories] = useState(loadData());
+          const [expandedCategories, setExpandedCategories] = useState(new Set());
+          const [expandedItems, setExpandedItems] = useState(new Set());
+          const [isCreating, setIsCreating] = useState(false);
+          const [editingId, setEditingId] = useState(null);
+          const [newCategoryName, setNewCategoryName] = useState('');
+          const [selectedParent, setSelectedParent] = useState(null);
+          const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+          const [addingItemTo, setAddingItemTo] = useState(null);
+          const [editingItem, setEditingItem] = useState(null);
+          const [itemForm, setItemForm] = useState({ title: '', url: '', memo: '' });
+          const [searchTerm, setSearchTerm] = useState('');
+const [filteredCategories, setFilteredCategories] = useState([]);
+
+          const getColorForLevel = (level) => {
+            const colors = [
+              'bg-blue-100 border-blue-300 text-blue-800',
+              'bg-green-100 border-green-300 text-green-800',
+              'bg-purple-100 border-purple-300 text-purple-800',
+              'bg-pink-100 border-pink-300 text-pink-800',
+              'bg-yellow-100 border-yellow-300 text-yellow-800',
+              'bg-indigo-100 border-indigo-300 text-indigo-800',
+              'bg-red-100 border-red-300 text-red-800',
+              'bg-teal-100 border-teal-300 text-teal-800',
+              'bg-orange-100 border-orange-300 text-orange-800',
+              'bg-cyan-100 border-cyan-300 text-cyan-800'
+            ];
+            return colors[(level - 1) % colors.length];
+          };
+
+          const generateId = () => Date.now().toString();
+          const searchCategories = (term) => {
+  if (!term.trim()) {
+    setFilteredCategories([]);
+    return;
+  }
+
+  const searchInCategory = (category) => {
+    let hasMatch = false;
+    let matchedItems = [];
+    let matchedChildren = [];
+
+    // 카테고리 이름에서 검색
+    const categoryMatch = category.name.toLowerCase().includes(term.toLowerCase());
+
+    // 아이템에서 검색
+    if (category.items) {
+      matchedItems = category.items.filter(item => 
+        item.title.toLowerCase().includes(term.toLowerCase()) ||
+        (item.url && item.url.toLowerCase().includes(term.toLowerCase())) ||
+        (item.memo && item.memo.toLowerCase().includes(term.toLowerCase()))
+      );
+    }
+
+    // 하위 카테고리에서 검색
+    if (category.children) {
+      category.children.forEach(child => {
+        const childResult = searchInCategory(child);
+        if (childResult) {
+          matchedChildren.push(childResult);
+        }
+      });
+    }
+
+    hasMatch = categoryMatch || matchedItems.length > 0 || matchedChildren.length > 0;
+
+    if (hasMatch) {
+      return {
+        ...category,
+        items: matchedItems.length > 0 ? matchedItems : category.items,
+        children: matchedChildren,
+        isSearchResult: true
+      };
+    }
+
+    return null;
+  };
+
+  const results = categories.map(category => searchInCategory(category)).filter(Boolean);
+  setFilteredCategories(results);
+};
+
+          const addCategory = () => {
+            if (!newCategoryName.trim()) return;
+
+            const newCategory = {
+              id: generateId(),
+              name: newCategoryName,
+              level: selectedParent ? selectedParent.level + 1 : 1,
+              parentId: selectedParent ? selectedParent.id : null,
+              children: [],
+              items: []
+            };
+
+            if (selectedParent) {
+              const updateCategories = (cats) => {
+                return cats.map(cat => {
+                  if (cat.id === selectedParent.id) {
+                    return { ...cat, children: [...cat.children, newCategory] };
+                  }
+                  if (cat.children.length > 0) {
+                    return { ...cat, children: updateCategories(cat.children) };
+                  }
+                  return cat;
+                });
+              };
+const updatedCategories = updateCategories(categories);
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            } else {
+              const updatedCategories = [...categories, newCategory];
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            }
+
+            setNewCategoryName('');
+            setIsCreating(false);
+            setSelectedParent(null);
+          };
+
+          const confirmDeleteCategory = (categoryId, categoryName) => {
+            setShowDeleteConfirm({
+              type: 'category',
+              id: categoryId,
+              name: categoryName
+            });
+          };
+
+          const deleteCategory = (categoryId) => {
+            const deleteCategoryRecursive = (cats) => {
+              return cats.filter(cat => cat.id !== categoryId)
+                .map(cat => ({
+                  ...cat,
+                  children: deleteCategoryRecursive(cat.children)
+                }));
+            };
+const updatedCategories = deleteCategoryRecursive(categories);
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            setShowDeleteConfirm(null);
+          };
+
+          const updateCategoryName = (categoryId, newName) => {
+            const updateCategories = (cats) => {
+              return cats.map(cat => {
+                if (cat.id === categoryId) {
+                  return { ...cat, name: newName };
+                }
+                if (cat.children.length > 0) {
+                  return { ...cat, children: updateCategories(cat.children) };
+                }
+                return cat;
+              });
+            };
+            const updatedCategories = updateCategories(categories);
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            setEditingId(null);
+          };
+
+          const toggleCategory = (categoryId) => {
+            const newExpanded = new Set(expandedCategories);
+            if (newExpanded.has(categoryId)) {
+              newExpanded.delete(categoryId);
+            } else {
+              newExpanded.add(categoryId);
+            }
+            setExpandedCategories(newExpanded);
+          };
+
+          const toggleItems = (categoryId) => {
+            const newExpanded = new Set(expandedItems);
+            if (newExpanded.has(categoryId)) {
+              newExpanded.delete(categoryId);
+            } else {
+              newExpanded.add(categoryId);
+            }
+            setExpandedItems(newExpanded);
+          };
+
+          const startAddingSubCategory = (parent) => {
+            setSelectedParent(parent);
+            setIsCreating(true);
+            setNewCategoryName('');
+          };
+
+          const startAddingItem = (categoryId) => {
+            setAddingItemTo(categoryId);
+            setItemForm({ title: '', url: '', memo: '' });
+          };
+
+          const saveItem = () => {
+            if (!itemForm.title.trim() && !itemForm.url.trim() && !itemForm.memo.trim()) {
+              return;
+            }
+
+            const targetCategoryId = editingItem ? editingItem.categoryId : addingItemTo;
+            const newItem = {
+              id: editingItem ? editingItem.id : generateId(),
+              title: itemForm.title || '제목 없음',
+              url: itemForm.url,
+              memo: itemForm.memo,
+              createdAt: editingItem ? editingItem.createdAt : new Date().toISOString()
+            };
+
+            const updateCategories = (cats) => {
+              return cats.map(cat => {
+                if (cat.id === targetCategoryId) {
+                  const updatedItems = editingItem 
+                    ? cat.items.map(item => item.id === editingItem.id ? newItem : item)
+                    : [...cat.items, newItem];
+                  return { ...cat, items: updatedItems };
+                }
+                if (cat.children.length > 0) {
+                  return { ...cat, children: updateCategories(cat.children) };
+                }
+                return cat;
+              });
+            };
+
+            const updatedCategories = updateCategories(categories);
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            setAddingItemTo(null);
+            setEditingItem(null);
+            setItemForm({ title: '', url: '', memo: '' });
+          };
+
+          const confirmDeleteItem = (item, categoryId) => {
+            setShowDeleteConfirm({
+              type: 'item',
+              id: item.id,
+              name: item.title,
+              categoryId: categoryId
+            });
+          };
+
+          const deleteItem = (itemId, categoryId) => {
+            const updateCategories = (cats) => {
+              return cats.map(cat => {
+                if (cat.id === categoryId) {
+                  return { ...cat, items: cat.items.filter(item => item.id !== itemId) };
+                }
+                if (cat.children.length > 0) {
+                  return { ...cat, children: updateCategories(cat.children) };
+                }
+                return cat;
+              });
+            };
+            const updatedCategories = updateCategories(categories);
+setCategories(updatedCategories);
+localStorage.setItem('treasureBoxData', JSON.stringify(updatedCategories));
+            setShowDeleteConfirm(null);
+          };
+
+          const startEditingItem = (item, categoryId) => {
+            setEditingItem({ ...item, categoryId });
+            setItemForm({
+              title: item.title,
+              url: item.url,
+              memo: item.memo
+            });
+          };
+
+          const renderCategory = (category, depth = 0) => {
+            const isExpanded = expandedCategories.has(category.id);
+            const isItemsExpanded = expandedItems.has(category.id);
+            const hasChildren = category.children && category.children.length > 0;
+            const hasItems = category.items && category.items.length > 0;
+            const colorClass = getColorForLevel(category.level);
+            
+            return (
+              <div key={category.id} className="mb-2">
+                <div 
+                  className={`flex items-center justify-between p-3 rounded-lg border-2 ${colorClass} transition-all duration-200 hover:shadow-md`}
+                  style={{ marginLeft: `${depth * 20}px` }}
+                >
+                  <div className="flex items-center space-x-2">
+                    {(hasChildren || hasItems) && (
+                      <button
+                        onClick={() => toggleCategory(category.id)}
+                        className="p-1 rounded-full hover:bg-white hover:bg-opacity-50 transition-colors"
+                      >
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    )}
+                    <Folder size={18} />
+                    {editingId === category.id ? (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          defaultValue={category.name}
+                          className="px-2 py-1 bg-white border border-gray-300 rounded text-sm"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              updateCategoryName(category.id, e.target.value);
+                            }
+                          }}
+                          onBlur={(e) => updateCategoryName(category.id, e.target.value)}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="p-1 hover:bg-white hover:bg-opacity-50 rounded"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="font-medium">{category.name}</span>
+                    )}
+                    {hasItems && (
+                      <span className="text-xs bg-white bg-opacity-60 px-2 py-1 rounded-full">
+                        {category.items.length}개
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => startAddingItem(category.id)}
+                      className="p-1 hover:bg-white hover:bg-opacity-50 rounded transition-colors"
+                      title="자료 추가"
+                    >
+                      <FileText size={14} />
+                    </button>
+                    <button
+                      onClick={() => startAddingSubCategory(category)}
+                      className="p-1 hover:bg-white hover:bg-opacity-50 rounded transition-colors"
+                      title="서브 카테고리 추가"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    <button
+                      onClick={() => setEditingId(category.id)}
+                      className="p-1 hover:bg-white hover:bg-opacity-50 rounded transition-colors"
+                      title="이름 수정"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => confirmDeleteCategory(category.id, category.name)}
+                      className="p-1 hover:bg-white hover:bg-opacity-50 rounded transition-colors text-red-600"
+                      title="삭제"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="mt-2">
+                    {hasItems && (
+                      <div style={{ marginLeft: `${(depth + 1) * 20}px` }} className="mb-2">
+                        <button
+                          onClick={() => toggleItems(category.id)}
+                          className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-800 mb-2"
+                        >
+                          {isItemsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          <FileText size={14} />
+                          <span>자료 ({category.items.length}개)</span>
+                        </button>
+
+                        {isItemsExpanded && (
+                          <div className="space-y-1">
+                            {category.items.map(item => (
+                              <div key={item.id} className="bg-white border border-gray-200 rounded p-2 flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm">{item.title}</div>
+                                  {item.url && (
+                                    <a 
+                                      href={item.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-600 hover:underline flex items-center space-x-1"
+                                    >
+                                      <ExternalLink size={12} />
+                                      <span>{item.url}</span>
+                                    </a>
+                                  )}
+                                  {item.memo && (
+                                    <div className="text-xs text-gray-600 mt-1">{item.memo}</div>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <button
+                                    onClick={() => startEditingItem(item, category.id)}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    title="수정"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => confirmDeleteItem(item, category.id)}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors text-red-600"
+                                    title="삭제"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {hasChildren && (
+                      <div>
+                        {category.children.map(child => renderCategory(child, depth + 1))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 p-4">
+              <div className="max-w-4xl mx-auto">
+                <div className="text-center mb-8">
+                  <h1 className="text-3xl font-bold text-gray-800 mb-2">📦 보물창고</h1>
+                  <p className="text-gray-600">중요한 자료를 카테고리별로 정리하세요</p>
+                </div>
+
+               <div className="mb-6 space-y-4">
+  <div className="flex items-center space-x-2 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+    <Search size={18} />
+    <input
+      type="text"
+      value={searchTerm}
+      onChange={(e) => {
+        setSearchTerm(e.target.value);
+        searchCategories(e.target.value);
+      }}
+      placeholder="폴더명, 자료 제목, URL, 메모에서 검색..."
+      className="flex-1 px-3 py-2 border-0 focus:outline-none text-gray-700"
+    />
+    {searchTerm && (
+      <button
+        onClick={() => {
+          setSearchTerm('');
+          setFilteredCategories([]);
+        }}
+        className="p-1 hover:bg-gray-100 rounded transition-colors text-gray-500"
+        title="검색 초기화"
+      >
+        <X size={16} />
+      </button>
+    )}
+  </div>
+  
+  <button
+    onClick={() => {
+      setIsCreating(true);
+      setSelectedParent(null);
+    }}
+    className="flex items-center space-x-2 bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
+  >
+    <Plus size={20} />
+    <span>새 카테고리 추가</span>
+  </button>
+</div>
+                {isCreating && (
+                  <div className="mb-6 p-4 bg-white rounded-lg border-2 border-orange-200 shadow-sm">
+                    <h3 className="text-lg font-semibold mb-3">
+                      {selectedParent ? `"${selectedParent.name}" 하위 카테고리 추가` : '새 카테고리 추가'}
+                    </h3>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        placeholder="카테고리 이름을 입력하세요"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        onKeyPress={(e) => e.key === 'Enter' && addCategory()}
+                      />
+                      <button
+                        onClick={addCategory}
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        <Save size={18} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsCreating(false);
+                          setSelectedParent(null);
+                          setNewCategoryName('');
+                        }}
+                        className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(addingItemTo || editingItem) && (
+                  <div className="mb-6 p-4 bg-white rounded-lg border-2 border-blue-200 shadow-sm">
+                    <h3 className="text-lg font-semibold mb-3">
+                      {editingItem ? '자료 수정' : '새 자료 추가'}
+                    </h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">제목</label>
+                        <input
+                          type="text"
+                          value={itemForm.title}
+                          onChange={(e) => setItemForm({...itemForm, title: e.target.value})}
+                          placeholder="자료 제목을 입력하세요"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                        <input
+                          type="url"
+                          value={itemForm.url}
+                          onChange={(e) => setItemForm({...itemForm, url: e.target.value})}
+                          placeholder="https://example.com"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">메모</label>
+                        <textarea
+                          value={itemForm.memo}
+                          onChange={(e) => setItemForm({...itemForm, memo: e.target.value})}
+                          placeholder="메모를 입력하세요"
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 mt-4">
+                      <button
+                        onClick={saveItem}
+                        className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        <Save size={18} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddingItemTo(null);
+                          setEditingItem(null);
+                          setItemForm({ title: '', url: '', memo: '' });
+                        }}
+                        className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showDeleteConfirm && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+                      <h3 className="text-lg font-semibold mb-4">삭제 확인</h3>
+                      <p className="text-gray-600 mb-6">
+                        삭제를 하면 복구되지 않습니다.<br />
+                        "{showDeleteConfirm.name}"을(를) 꼭 삭제하시겠습니까?
+                      </p>
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          onClick={() => setShowDeleteConfirm(null)}
+                          className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                        >
+                          취소
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (showDeleteConfirm.type === 'category') {
+                              deleteCategory(showDeleteConfirm.id);
+                            } else {
+                              deleteItem(showDeleteConfirm.id, showDeleteConfirm.categoryId);
+                            }
+                          }}
+                          className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                  <h3 className="text-sm font-semibold mb-2">카테고리 레벨 색상</h3>
+                  <div className="grid grid-cols-5 gap-2 text-sm">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded"></div>
+                      <span>1차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                      <span>2차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-purple-100 border border-purple-300 rounded"></div>
+                      <span>3차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-pink-100 border border-pink-300 rounded"></div>
+                      <span>4차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-yellow-100 border border-yellow-300 rounded"></div>
+                      <span>5차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-indigo-100 border border-indigo-300 rounded"></div>
+                      <span>6차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                      <span>7차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-teal-100 border border-teal-300 rounded"></div>
+                      <span>8차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-orange-100 border border-orange-300 rounded"></div>
+                      <span>9차</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-cyan-100 border border-cyan-300 rounded"></div>
+                      <span>10차</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">10차 이후부터는 색상이 반복됩니다</p>
+                </div>
+
+              <div className="space-y-2">
+  {searchTerm && (
+    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="flex items-center space-x-2 text-blue-800">
+        <Search size={16} />
+        <span className="font-medium">검색 결과: "{searchTerm}"</span>
+        <span className="text-sm">({filteredCategories.length}개 폴더)</span>
+      </div>
+    </div>
+  )}
+  
+  {categories.length === 0 ? (
+    <div className="text-center py-12 text-gray-500">
+      <Folder size={48} className="mx-auto mb-4 text-gray-300" />
+      <p>아직 카테고리가 없습니다.</p>
+      <p className="text-sm">새 카테고리를 추가해보세요!</p>
+    </div>
+  ) : searchTerm ? (
+    filteredCategories.length === 0 ? (
+      <div className="text-center py-12 text-gray-500">
+        <Search size={48} className="mx-auto mb-4 text-gray-300" />
+        <p>검색 결과가 없습니다.</p>
+        <p className="text-sm">다른 검색어를 시도해보세요.</p>
+      </div>
+    ) : (
+      filteredCategories.map(category => renderCategory(category))
+    )
+  ) : (
+    categories.map(category => renderCategory(category))
+  )}
+</div>
+
+                <div className="mt-8 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-semibold mb-3">📋 사용법</h3>
+                  <ul className="space-y-2 text-sm text-gray-600">
+                    <li>• 메인 카테고리(1차)부터 시작하여 무제한으로 하위 카테고리를 만들 수 있습니다</li>
+                    <li>• 각 레벨은 다른 색상으로 구분됩니다 (10차 이후부터는 색상이 반복됩니다)</li>
+                    <li>• 📄 버튼으로 각 폴더에 자료를 추가할 수 있습니다</li>
+                    <li>• 자료는 제목, URL, 메모를 저장할 수 있으며 모두 입력하지 않아도 됩니다</li>
+                    <li>• 폴더를 펼치면 저장된 자료들을 제목으로 확인할 수 있습니다</li>
+                    <li>• 자료나 폴더 삭제 시 확인 메시지가 나타납니다</li>
+                    <li>• + 버튼으로 하위 카테고리를 추가할 수 있습니다</li>
+                    <li>• 화살표를 클릭하여 하위 카테고리나 자료를 접거나 펼칠 수 있습니다</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        ReactDOM.render(<TreasureBoxApp />, document.getElementById('root'));
+        // 서비스 워커 등록
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/bo57/sw.js')
+      .then(function(registration) {
+        console.log('Service Worker registered successfully:', registration.scope);
+      })
+      .catch(function(error) {
+        console.log('Service Worker registration failed:', error);
+      });
+  });
+}
+
+// 공유된 데이터 처리
+window.addEventListener('load', function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sharedTitle = urlParams.get('title');
+  const sharedText = urlParams.get('text');
+  const sharedUrl = urlParams.get('url');
+  
+  if (sharedTitle || sharedText || sharedUrl) {
+    console.log('공유된 데이터:', {
+      title: sharedTitle,
+      text: sharedText,
+      url: sharedUrl
+    });
+    
+      // 여기서 공유된 데이터를 앱에 추가할 수 있어요
+alert('공유된 데이터를 받았습니다!\n제목: ' + (sharedTitle || '없음') + '\nURL: ' + (sharedUrl || '없음') + '\n텍스트: ' + (sharedText || '없음') + '\n\n카테고리를 만든 후 수동으로 추가해주세요.');
+  }
+});
+    </script>
+</body>
+</html>
